@@ -1,0 +1,246 @@
+/* style.css */
+:root {
+  --bg: #daf6ff;
+  --text: #005270;
+  --accent: #ff4d94;
+  --box: rgba(255, 255, 255, 0.7);
+  --pattern: #ffebf5;
+}
+
+@keyframes subtleSway {
+  0%, 100% { transform: rotate(-1deg) scale(0.99); }
+  50% { transform: rotate(1deg) scale(1.01); }
+}
+
+@keyframes floatUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes subtleFloat {
+  0%, 100% { background-position: 0% 0%; }
+  25% { background-position: 100% 0%; }
+  50% { background-position: 100% 100%; }
+  75% { background-position: 0% 100%; }
+}
+
+@keyframes borderRotate {
+  to { --angle: 360deg; }
+}
+
+body {
+  background: var(--bg);
+  background: #e8eeff;
+  background-image: 
+      radial-gradient(circle at 50% 50%, #f4d5eb 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, #d5e6ff 0%, transparent 40%),
+      radial-gradient(circle at 0% 0%, #e8d5f4 0%, transparent 40%);
+  background-size: 200% 200%;
+  animation: subtleFloat 30s ease-in-out infinite;
+  color: var(--text);
+  font-family: "Iosevka", monospace;
+  line-height: 1.6;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+main {
+  padding: 4rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+
+}
+
+.site-header {
+  background: var(--box);
+  backdrop-filter: blur(10px);
+  padding: 2rem;
+  border-radius: 20px;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.site-header::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 22px;
+  padding: 2px;
+  background: conic-gradient(
+      from var(--angle),
+      var(--accent),
+      #88d9ff,
+      var(--accent)
+  );
+  -webkit-mask: 
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+  mask: 
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  animation: borderRotate 20s linear infinite;
+  opacity: 0.5;
+}
+
+h1 {
+  font-size: 3rem;
+  margin: 0;
+  color: var(--accent);
+  font-weight: normal;
+  text-align: center;
+  letter-spacing: -1px;
+}
+
+.pronouns {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.content {
+  background: var(--box);
+  backdrop-filter: blur(10px);
+  padding: 2rem;
+  border-radius: 20px;
+  margin: 2rem 0;
+  font-size: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+      90deg,
+      transparent,
+      var(--accent),
+      transparent
+  );
+}
+
+.content::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+      90deg,
+      transparent,
+      var(--accent),
+      transparent
+  );
+}
+
+.links {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.links a {
+  color: var(--accent);
+  text-decoration: none;
+  margin: 0 1rem;
+  position: relative;
+  transition: color 0.3s ease;
+}
+
+.links a::before {
+  content: '{';
+  position: absolute;
+  left: -0.8em;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.links a::after {
+  content: '}';
+  position: absolute;
+  right: -0.8em;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.links a:hover {
+  color: var(--text);
+}
+
+.links a:hover::before,
+.links a:hover::after {
+  opacity: 1;
+}
+
+.badges {
+  background: var(--box);
+  backdrop-filter: blur(10px);
+  padding: 2rem;
+  border-radius: 20px;
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  position: relative;
+}
+
+.badges::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: linear-gradient(45deg, transparent 40%, rgba(255, 77, 148, 0.1) 45%, transparent 50%);
+  animation: floatUp 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.badges img {
+  image-rendering: pixelated;
+  height: 31px;
+  width: auto;
+  transition: all 0.2s ease;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  position: relative;
+  z-index: 1;
+}
+
+.badges a {
+  height: 31px;
+}
+
+.badges img:hover {
+  transform: scale(1.1) rotate(-2deg);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+}
+
+@media (max-width: 600px) {
+  main {
+      padding: 2rem 1rem;
+  }
+  
+  .site-header, .content, .badges {
+      padding: 1.5rem;
+  }
+  
+  h1 {
+      font-size: 2.5rem;
+  }
+  
+  .badges {
+      gap: 0.5rem;
+  }
+}
