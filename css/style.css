@@ -1,12 +1,13 @@
 /* style.css */
 :root {
-  --bg: #daf6ff;
-  --text: #005270;
+  --bg: #1a1b26;
+  --text: #a9b1d6;
   --accent: #ff4d94;
-  --box: rgba(255, 255, 255, 0.7);
-  --pattern: #ffebf5;
+  --box: rgba(22, 23, 34, 0.7);
+  --pattern: #2a2b36;
 }
 
+/* Animations */
 @keyframes subtleSway {
   0%, 100% { transform: rotate(-1deg) scale(0.99); }
   50% { transform: rotate(1deg) scale(1.01); }
@@ -34,39 +35,30 @@
   to { --angle: 360deg; }
 }
 
+/* Base Styles */
 body {
-  background: var(--bg);
-  background: #e8eeff;
-  background-image: 
-      radial-gradient(circle at 50% 50%, #f4d5eb 0%, transparent 40%),
-      radial-gradient(circle at 100% 100%, #d5e6ff 0%, transparent 40%),
-      radial-gradient(circle at 0% 0%, #e8d5f4 0%, transparent 40%);
-  background-size: 200% 200%;
-  animation: subtleFloat 30s ease-in-out infinite;
+  background: #13141c;
   color: var(--text);
   font-family: "Iosevka", monospace;
   line-height: 1.6;
   min-height: 100vh;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
 
+/* Main Container */
 main {
-  padding: 4rem 2rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.site-header {
+  max-width: 36em;
+  margin: 2em auto;
+  padding: 1.618em;
   background: var(--box);
   backdrop-filter: blur(10px);
-  padding: 2rem;
   border-radius: 20px;
-  margin-bottom: 2rem;
   position: relative;
 }
 
-.site-header::before {
+main::before {
   content: '';
   position: absolute;
   inset: -2px;
@@ -90,110 +82,122 @@ main {
   opacity: 0.5;
 }
 
-h1 {
-  font-size: 3rem;
+/* Header Styles */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.75em;
+  margin-bottom: 1em;
+  border-bottom: 1px dashed rgba(255, 77, 148, 0.3);
+}
+
+header div {
+  flex: 1;
+}
+
+header h1 {
+  font-size: 3.5rem;
+  color: #ff4d94;
   margin: 0;
-  color: var(--accent);
   font-weight: normal;
-  text-align: center;
-  letter-spacing: -1px;
 }
 
-.pronouns {
-  text-align: center;
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-  opacity: 0.8;
+header aside {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.content {
-  background: var(--box);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 20px;
-  margin: 2rem 0;
-  font-size: 1rem;
-  position: relative;
-  overflow: hidden;
+header aside img {
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
 }
 
-.content::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-      90deg,
-      transparent,
-      var(--accent),
-      transparent
-  );
+/* Section Styles */
+section {
+  margin: 1.5em 0;
+  padding-bottom: 1.5em;
+  border-bottom: 1px dashed rgba(255, 77, 148, 0.3);
 }
 
-.content::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-      90deg,
-      transparent,
-      var(--accent),
-      transparent
-  );
+section:last-of-type {
+  border-bottom: none;
 }
 
-.links {
-  text-align: center;
-  margin: 2rem 0;
+section h2 {
+  font-size: 1em;
+  color: #88d9ff;
+  margin: 0 0 0.75em 0;
+  font-weight: normal;
 }
 
-.links a {
-  color: var(--accent);
-  text-decoration: none;
-  margin: 0 1rem;
-  position: relative;
-  transition: color 0.3s ease;
+#intro {
+  color: var(--text);
+  line-height: 1.6;
+  margin-top: 0;
 }
 
-.links a::before {
-  content: '{';
-  position: absolute;
-  left: -0.8em;
-  opacity: 0;
-  transition: all 0.3s ease;
-}
-
-.links a::after {
-  content: '}';
-  position: absolute;
-  right: -0.8em;
-  opacity: 0;
-  transition: all 0.3s ease;
-}
-
-.links a:hover {
+section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
   color: var(--text);
 }
 
-.links a:hover::before,
-.links a:hover::after {
-  opacity: 1;
+section ul li {
+  padding-left: 1.2em;
+  position: relative;
+  line-height: 1.6;
+}
+
+section ul li:before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #ff4d94;
+}
+
+/* List Styles */
+.inline-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+}
+
+.inline-list li {
+  padding-left: 0;
+}
+
+.inline-list li:before {
+  content: none;
+}
+
+.inline-list li + li {
+  border-inline-start: 2px solid #ff4d94;
+  padding-inline-start: 1ch;
+  margin-left: 1ch;
+}
+
+/* Footer and Badges */
+footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 1em;
+  padding-top: 0.5em;
 }
 
 .badges {
+  display: flex;
+  gap: 0.7rem;
   background: var(--box);
   backdrop-filter: blur(10px);
   padding: 2rem;
   border-radius: 20px;
-  display: flex;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  justify-content: center;
   position: relative;
 }
 
@@ -203,43 +207,76 @@ h1 {
   inset: 0;
   border-radius: 20px;
   background: linear-gradient(45deg, transparent 40%, rgba(255, 77, 148, 0.1) 45%, transparent 50%);
-  animation: floatUp 8s ease-in-out infinite;
   pointer-events: none;
 }
 
 .badges img {
-  image-rendering: pixelated;
   height: 31px;
   width: auto;
-  transition: all 0.2s ease;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
-  position: relative;
-  z-index: 1;
-}
-
-.badges a {
-  height: 31px;
+  image-rendering: pixelated;
+  transition: transform 0.2s ease;
 }
 
 .badges img:hover {
   transform: scale(1.1) rotate(-2deg);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
 }
 
+/* Link Styles */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  position: relative;
+  transition: color 0.3s ease;
+  padding: 0 1ch;
+}
+
+a::before {
+  content: '{';
+  position: absolute;
+  left: -0.2ch;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+a::after {
+  content: '}';
+  position: absolute;
+  right: -0.2ch;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+a:hover {
+  color: #88d9ff;
+}
+
+a:hover::before,
+a:hover::after {
+  opacity: 1;
+}
+
+/* Media Queries */
 @media (max-width: 600px) {
   main {
-      padding: 2rem 1rem;
+      margin: 1rem;
+      padding: 1rem;
   }
   
-  .site-header, .content, .badges {
-      padding: 1.5rem;
+  header {
+      gap: 1rem;
   }
   
-  h1 {
+  header h1 {
       font-size: 2.5rem;
   }
   
-  .badges {
-      gap: 0.5rem;
+  .inline-list {
+      flex-direction: column;
+  }
+  
+  .inline-list li + li {
+      border-inline-start: none;
+      padding-inline-start: 0;
+      margin-top: 0.5em;
   }
 }
