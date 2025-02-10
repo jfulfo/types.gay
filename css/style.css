@@ -212,7 +212,7 @@ footer {
 
 .badges img {
   height: 31px;
-  width: auto;
+  width: 88px;
   image-rendering: pixelated;
   transition: transform 0.2s ease;
 }
