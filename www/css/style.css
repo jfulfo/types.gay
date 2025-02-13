@@ -259,6 +259,21 @@ a:hover::after {
   opacity: 1;
 }
 
+a.badge-link {
+  padding: 0;
+}
+
+a.badge-link::before,
+a.badge-link::after {
+  content: none;
+}
+
+a.badge-link:hover::before,
+a.badge-link:hover::after {
+  content: none;
+  opacity: 0;
+}
+
 /* Media Queries */
 @media (max-width: 600px) {
   main {
