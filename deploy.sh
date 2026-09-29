@@ -2,14 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The loose-pages app builds into www/cat-theory, so it must be built before
-# the --delete sync below (otherwise that would wipe it from the server).
-(
-    cd cat-theory
-    [ -d node_modules ] || npm ci
-    npm test
-    npm run build
-)
+# cat-theory/ (the loose-pages book) and cgi-bin/lean (its Lean checker) are
+# kept in the repo but not deployed; they were taken offline on 2026-09-29.
 
 rsync -avz --delete \
     --no-owner --no-group --no-times --no-perms \
@@ -17,17 +11,14 @@ rsync -avz --delete \
     --exclude 'deploy.sh' \
     --exclude '.github' \
     --exclude 'cgi-bin' \
+    --exclude 'cat-theory' \
     www/ jamie@192.168.1.36:/var/www/types.gay/
 
 rsync -avz \
     --no-owner --no-group --no-times \
     --perms --chmod=755 \
     --exclude 'data' \
+    --exclude 'lean' \
     cgi-bin/ jamie@192.168.1.36:/var/www/types.gay/cgi-bin/
-
-# A cold Lean check of the untouched book takes about a minute on the Pi; do it
-# now so the first reader doesn't wait. (Results are cached by content.)
-(cd cat-theory && npx tsx scripts/monolith-body.ts) |
-    curl -s -m 180 -X POST --data-binary @- https://types.gay/cat-theory/api/check > /dev/null &
 
 echo "Deployed successfully"
