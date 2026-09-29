@@ -1,8 +1,5 @@
 #!/bin/bash
 
-echo "Content-type: application/json"
-echo
-
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DATA_DIR="$SCRIPT_DIR/data"
 
@@ -13,6 +10,22 @@ PAGE=$(echo "$QUERY_STRING" | sed -n 's/^.*page=\([^&]*\).*$/\1/p')
 PAGE=${PAGE:-"index"} # default to index if no page specified
 
 PAGE=$(echo "$PAGE" | sed 's/[^a-zA-Z0-9_-]//g')
+
+# only count known pages, otherwise anyone can create files here
+# ("/" arrives url-encoded as %2F, which sanitizes to 2F)
+case "$PAGE" in
+    2F) ;;
+    *)
+        echo "Status: 404 Not Found"
+        echo "Content-type: application/json"
+        echo
+        echo '{"error": "unknown page"}'
+        exit 0
+        ;;
+esac
+
+echo "Content-type: application/json"
+echo
 
 COUNTER_FILE="$DATA_DIR/$PAGE.txt"
 

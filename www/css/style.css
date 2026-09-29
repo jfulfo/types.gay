@@ -94,6 +94,15 @@ header {
 
 header div {
   flex: 1;
+  min-width: 0;
+}
+
+/* 219x30 gif; 416px wide on desktop, shrinks to fit on small screens */
+.title-gif {
+  display: block;
+  width: 100%;
+  max-width: 416px;
+  height: auto;
 }
 
 header h1 {
@@ -104,7 +113,7 @@ header h1 {
 }
 
 header aside {
-  flex: 1;
+  flex: none;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -290,6 +299,11 @@ a.badge-link:hover::after {
   header h1 {
       font-size: 2.5rem;
   }
+
+  header aside img {
+      width: 64px;
+      height: 64px;
+  }
   
   .inline-list {
       flex-direction: column;
@@ -298,6 +312,7 @@ a.badge-link:hover::after {
   .inline-list li + li {
       border-inline-start: none;
       padding-inline-start: 0;
+      margin-left: 0;
       margin-top: 0.5em;
   }
 }
