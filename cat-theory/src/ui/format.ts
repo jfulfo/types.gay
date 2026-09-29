@@ -20,23 +20,3 @@ export function equationHtml(src: string): string {
   const [l, r] = src.split('=');
   return `${termHtml(parseTerm(l))} = ${termHtml(parseTerm(r))}`;
 }
-
-/** How the pencil abbreviates a citation in the margin. */
-export function shortCite(label: string): string {
-  if (label.startsWith('Lemma ')) return 'L' + label.slice(6);
-  if (label.startsWith('Theorem ')) return 'Thm ' + label.slice(8);
-  return label;
-}
-
-export function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-export function pick<T>(key: string, options: T[]): T {
-  return options[hash(key) % options.length];
-}

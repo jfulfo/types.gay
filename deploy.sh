@@ -25,4 +25,9 @@ rsync -avz \
     --exclude 'data' \
     cgi-bin/ jamie@192.168.1.36:/var/www/types.gay/cgi-bin/
 
+# A cold Lean check of the untouched book takes about a minute on the Pi; do it
+# now so the first reader doesn't wait. (Results are cached by content.)
+(cd cat-theory && npx tsx scripts/monolith-body.ts) |
+    curl -s -m 180 -X POST --data-binary @- https://types.gay/cat-theory/api/check > /dev/null &
+
 echo "Deployed successfully"
