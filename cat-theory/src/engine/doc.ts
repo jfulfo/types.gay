@@ -1,5 +1,5 @@
-// The book as a document: one law, some lemmas, one theorem. Every proof is
-// a chain of rewrites citing the law or an earlier lemma. The reader
+// The book as a document: some axioms, some lemmas, one theorem. Every proof
+// is a chain of rewrites citing an axiom or an earlier lemma. The reader
 // restructures it by carving stretches of a proof out into lemmas (or
 // erasing lemmas back into the proofs that use them).
 
@@ -22,11 +22,10 @@ import {
   type Term,
 } from './term';
 
-export const LAW = 'law';
 export const THEOREM = 'thm';
 
 export interface Step {
-  /** LAW, or the id of an earlier lemma. */
+  /** An axiom's label, or the id of an earlier lemma. */
   ref: string;
   dir: 1 | -1;
   pos: Pos;
@@ -54,7 +53,7 @@ export interface Item {
 }
 
 export interface Doc {
-  law: [Term, Term];
+  axioms: Axiom[];
   /** Lemmas in order, then the theorem last. */
   items: Item[];
   nextId: number;
@@ -63,10 +62,19 @@ export interface Doc {
 // ---------------------------------------------------------------------------
 // Building the first, monolithic proof.
 
-export function buildMonolith(lawSrc: string, goalSrc: string): Doc {
-  const law = parseEquation(lawSrc);
+export interface Axiom {
+  label: string;
+  lhs: Term;
+  rhs: Term;
+}
+
+export function buildMonolith(axiomSrcs: { label: string; src: string }[], goalSrc: string): Doc {
+  const axioms = axiomSrcs.map(({ label, src }) => {
+    const [lhs, rhs] = parseEquation(src);
+    return { label, lhs, rhs };
+  });
   const goal = parseEquation(goalSrc);
-  const run = complete([{ lhs: law[0], rhs: law[1], label: LAW }], goal, {
+  const run = complete(axioms, goal, {
     maxSteps: 20000,
     maxTermSize: 30,
     deadline: Date.now() + 20000,
@@ -81,7 +89,7 @@ export function buildMonolith(lawSrc: string, goalSrc: string): Doc {
       const e = store[s.eq];
       if (e.label) {
         into.terms.push(c.terms[i + 1]);
-        into.steps.push({ ref: LAW, dir: s.dir, pos: s.pos, sigma: s.sigma });
+        into.steps.push({ ref: e.label, dir: s.dir, pos: s.pos, sigma: s.sigma });
         return;
       }
       const from = into.terms.length - 1;
@@ -101,7 +109,7 @@ export function buildMonolith(lawSrc: string, goalSrc: string): Doc {
   const fixed = substChain(chain, Object.fromEntries([...free].map((v) => [v, pick])));
 
   const doc: Doc = {
-    law,
+    axioms,
     items: [{ id: THEOREM, lhs: run.goal[0], rhs: run.goal[1], chain: tidy(fixed) }],
     nextId: 1,
   };
@@ -186,7 +194,8 @@ function tidy(c: Chain): Chain {
 }
 
 export function statementOf(doc: Doc, ref: string): [Term, Term] {
-  if (ref === LAW) return doc.law;
+  const ax = doc.axioms.find((a) => a.label === ref);
+  if (ax) return [ax.lhs, ax.rhs];
   const it = doc.items.find((i) => i.id === ref);
   if (!it) throw new Error(`unknown reference ${ref}`);
   return [it.lhs, it.rhs];
@@ -202,7 +211,7 @@ function applyStep(doc: Doc, t: Term, s: Step): Term {
 
 /** The kernel. Throws unless every step of every proof checks. */
 export function checkDoc(doc: Doc): void {
-  const earlier = new Set<string>([LAW]);
+  const earlier = new Set<string>(doc.axioms.map((a) => a.label));
   doc.items.forEach((it, idx) => {
     if ((it.id === THEOREM) !== (idx === doc.items.length - 1)) throw new Error('kernel: theorem must come last');
     const c = it.chain;
@@ -393,7 +402,7 @@ export function carve(doc: Doc, itemId: string, from: number, to: number): { doc
   const g = generalize(doc, doc.items[host].chain, from, to);
 
   // Already known (maybe the other way round)? Then just use it.
-  const known = [...doc.items.slice(0, host).map((i) => i.id), LAW].find((ref) => {
+  const known = [...doc.items.slice(0, host).map((i) => i.id), ...doc.axioms.map((a) => a.label)].find((ref) => {
     const [l, r] = statementOf(doc, ref);
     return sameUpToRenaming([l, r], [g.lhs, g.rhs]) || sameUpToRenaming([r, l], [g.lhs, g.rhs]);
   });

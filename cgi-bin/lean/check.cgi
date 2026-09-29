@@ -23,18 +23,21 @@ CACHE = os.environ.get("LOOSE_PAGES_CACHE", "/var/cache/lean-check")
 MAX_BODY = 512 * 1024
 MAX_THEOREMS = 80
 
-# Must match LEAN_PRELUDE / LEAN_POSTLUDE in cat-theory/src/engine/lean.ts.
-PRELUDE = """class SingleLaw (G : Type) extends Mul G, Inv G where
-  law : ∀ x y z : G, ((x * y) * z) * (x * z)⁻¹ = y
+# Must match LEAN_PRELUDE / LEAN_POSTLUDE in cat-theory/src/engine/lean.ts (a test checks).
+PRELUDE = """class LeftGroup (G : Type) extends Mul G, Inv G where
+  e : G
+  assoc : ∀ {x y z : G}, (x * y) * z = x * (y * z)
+  e_mul : ∀ {x : G}, e * x = x
+  inv_mul : ∀ {x : G}, x⁻¹ * x = e
 
-namespace SingleLaw
-variable {G : Type} [SingleLaw G]
+namespace LeftGroup
+variable {G : Type} [LeftGroup G]
 """
-POSTLUDE = """end SingleLaw
+POSTLUDE = """end LeftGroup
 """
 
-TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|:=|=>|⁻¹|[():=*._]|[ \n]+")
-WORD = re.compile(r"^(theorem|calc|fun|congrArg|symm|law|comm|lemma\d{1,3}|G|[xyzuvwpqrst])$")
+TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|:=|=>|⁻¹|[():=*._{}·]|[ \n]+")
+WORD = re.compile(r"^(theorem|calc|fun|congrArg|symm|assoc|e_mul|inv_mul|mul_inv_rev|e|lemma\d{1,3}|G|[xyzuvwpqrst])$")
 
 
 def reply(status, payload):

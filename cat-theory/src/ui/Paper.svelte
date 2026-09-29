@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { paintCloth } from '../lib/cloth';
   import { paintPaper } from '../lib/paper';
   import { PAGE_H, PAGE_W } from './Book.svelte';
 
@@ -11,7 +10,7 @@
     children,
   }: {
     seed: number;
-    kind?: 'page' | 'cover' | 'endpaper';
+    kind?: 'page' | 'endpaper';
     side: 'left' | 'right';
     children?: Snippet;
   } = $props();
@@ -19,9 +18,7 @@
   let canvas: HTMLCanvasElement | undefined = $state();
   $effect(() => {
     if (!canvas) return;
-    if (kind === 'cover') paintCloth(canvas, PAGE_W, PAGE_H, seed);
-    else
-      paintPaper(canvas, {
+    paintPaper(canvas, {
         seed,
         width: PAGE_W,
         height: PAGE_H,
@@ -41,9 +38,6 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
-  }
-  .paper.cover {
-    border-radius: 2px 5px 5px 2px;
   }
   canvas {
     position: absolute;

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { checkLean, type CheckState } from './book/check';
-  import { layout, leanFor, PROOF_SPREADS, type Hint } from './book/layout';
+  import { layout, leanLines, type Hint } from './book/layout';
+  import { AXIOMS, THEOREM_SRC } from './book/theory';
   import { buildMonolith, carve, erase, type Doc } from './engine/doc';
   import { leanBody, leanItems, LEAN_PRELUDE } from './engine/lean';
   import { paintWood } from './lib/wood';
@@ -11,14 +12,11 @@
   import Paper from './ui/Paper.svelte';
   import PencilPage, { type Selection } from './ui/PencilPage.svelte';
 
-  const LAW_SRC = "((xy)z)(xz)' = y";
-  const GOAL_SRC = 'xy = yx';
-
   // --- the document, and the reader's history of changes to it ----------------
 
   type Op = { op: 'carve'; item: string; from: number; to: number } | { op: 'erase'; id: string };
-  const STORE = 'loose-pages:v2';
-  const base = buildMonolith(LAW_SRC, GOAL_SRC);
+  const STORE = 'loose-pages:v3';
+  const base = buildMonolith(AXIOMS, THEOREM_SRC);
 
   function replay(ops: Op[]): Doc {
     let d = base;
@@ -53,7 +51,7 @@
   });
 
   const lay = $derived(layout(doc));
-  const items = $derived(leanItems(doc));
+  const lean = $derived(leanLines(leanItems(doc)));
   const body = $derived(leanBody(doc));
 
   // --- Lean, checking in the background ------------------------------------------
@@ -66,13 +64,12 @@
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const r = await checkLean(b, ctrl.signal);
-        check = r;
+        check = await checkLean(b, ctrl.signal);
         checkedBody = b;
       } catch {
         /* superseded by a newer proof */
       }
-    }, 450);
+    }, 300);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
@@ -131,105 +128,52 @@
     cut = false;
     selection = null;
     pending = null;
+    note = null;
   }
+
+  const selectionRows = $derived(selection ? selection.to - selection.from + 1 : 0);
+  const selectionHere = (lines: typeof lay.lines) =>
+    !!selection && lines.some((l) => l.kind === 'row' && l.item === selection!.item && l.row === selection!.to);
 
   // --- the book ----------------------------------------------------------------------
   //
-  //  0 cover · 1 endpaper | 2 the law · 3 §1 | 4 Lean prelude ·
-  //  5 pencil | 6 Lean · 7 | 8 · 9 | 10 · 11 notes | 12 uncut · 13 | 14 part two
+  //  1 theorem + pencil | 2 Lean
+  //  3 run-on or notes  | 4 part two (uncut)
+  //  5                  | 6
 
-  const PAGES = 15;
-  const FIRST_PROOF = 5;
-  const NOTES = FIRST_PROOF + 2 * PROOF_SPREADS;
-  const UNCUT = NOTES + 1;
-  const UNCUT_SPREAD = UNCUT / 2;
-
-  let spread = $state(0);
-  let opened = $state(false);
+  const PAGES = 6;
+  const UNCUT = 4;
+  let at = $state(1);
   let book: Book | undefined = $state();
   let resisted = $state(false);
+  const canLeave = (p: number) => p !== UNCUT || cut;
 
-  const canTurn = (from: number) => from !== UNCUT_SPREAD || cut;
-  const selectionRows = $derived(selection ? selection.to - selection.from + 1 : 0);
-  const folio = (i: number) => (i >= 3 ? i - 2 : null);
+  // --- fitting the book to the window -------------------------------------------------
 
-  // --- camera over the desk --------------------------------------------------------
-
-  const BOOK_W = 2 * PAGE_W;
-  const DESK = { x: -900, y: -500, w: BOOK_W + 1800, h: PAGE_H + 1000 };
   let vw = $state(window.innerWidth);
   let vh = $state(window.innerHeight);
-  let cam = $state({ x: 0, y: 0, z: 1 });
+  const spreadScale = $derived(Math.min((vw - 40) / (2 * PAGE_W + 28), (vh - 40) / (PAGE_H + 24)));
+  const pageScale = $derived(Math.min((vw - 16) / PAGE_W, (vh - 16) / PAGE_H));
+  // Spreads while they stay legible; otherwise one page at a time.
+  const single = $derived(spreadScale < 0.62 && pageScale > spreadScale * 1.3);
+  const scale = $derived(single ? pageScale : spreadScale);
 
-  function home() {
-    const z = Math.max(0.2, Math.min((vw - 40) / (BOOK_W + 60), (vh - 40) / (PAGE_H + 60)));
-    cam = { z, x: BOOK_W / 2 - vw / 2 / z, y: PAGE_H / 2 - vh / 2 / z };
+  $effect(() => {
+    // Keep a sensible page in view when switching between spreads and single pages.
+    if (!single && at % 2 === 0) at -= 1;
+  });
+
+  // On touch screens, a horizontal swipe turns the page.
+  let swipe: { x: number; y: number } | null = null;
+  function swipeStart(e: PointerEvent) {
+    swipe = e.pointerType === 'touch' ? { x: e.clientX, y: e.clientY } : null;
   }
-  home();
-
-  let viewport: HTMLDivElement;
-  const pointers = new Map<number, { x: number; y: number }>();
-  let panning = false;
-  let pinch: { dist: number; z: number; wx: number; wy: number } | null = null;
-  const toWorld = (sx: number, sy: number) => ({ x: sx / cam.z + cam.x, y: sy / cam.z + cam.y });
-  const minZoom = () => Math.max(0.15, vw / DESK.w, vh / DESK.h);
-
-  function clampCam() {
-    cam.z = Math.min(8, Math.max(cam.z, minZoom()));
-    cam.x = Math.min(Math.max(cam.x, DESK.x), DESK.x + DESK.w - vw / cam.z);
-    cam.y = Math.min(Math.max(cam.y, DESK.y), DESK.y + DESK.h - vh / cam.z);
-  }
-
-  function onpointerdown(e: PointerEvent) {
-    const t = e.target as HTMLElement;
-    if (t.closest('button, [role="button"]')) return;
-    // With a mouse, the book is for reading and clicking; drag the desk to move.
-    if (e.pointerType === 'mouse' && t.closest('.book')) return;
-    viewport.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      const mid = toWorld((a.x + b.x) / 2, (a.y + b.y) / 2);
-      pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), z: cam.z, wx: mid.x, wy: mid.y };
-    } else panning = true;
-  }
-
-  function onpointermove(e: PointerEvent) {
-    const prev = pointers.get(e.pointerId);
-    if (!prev) return;
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch && pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      cam.z = (pinch.z * Math.hypot(a.x - b.x, a.y - b.y)) / pinch.dist;
-      clampCam();
-      cam.x = pinch.wx - (a.x + b.x) / 2 / cam.z;
-      cam.y = pinch.wy - (a.y + b.y) / 2 / cam.z;
-    } else if (panning) {
-      cam.x -= (e.clientX - prev.x) / cam.z;
-      cam.y -= (e.clientY - prev.y) / cam.z;
-    }
-    clampCam();
-  }
-
-  function onpointerup(e: PointerEvent) {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
-    if (pointers.size === 0) panning = false;
-  }
-
-  function onwheel(e: WheelEvent) {
-    e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
-      const before = toWorld(e.clientX, e.clientY);
-      cam.z *= Math.exp(-e.deltaY * 0.01);
-      clampCam();
-      cam.x = before.x - e.clientX / cam.z;
-      cam.y = before.y - e.clientY / cam.z;
-    } else {
-      cam.x += (e.shiftKey ? e.deltaY : e.deltaX) / cam.z;
-      cam.y += (e.shiftKey ? 0 : e.deltaY) / cam.z;
-    }
-    clampCam();
+  function swipeEnd(e: PointerEvent) {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    swipe = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) book?.turn(dx < 0 ? 1 : -1);
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -238,23 +182,22 @@
     else if (e.key === 'Escape') {
       selection = null;
       pending = null;
-    } else if (e.key === '0' && !e.ctrlKey) home();
+    }
   }
 
   let desk: HTMLCanvasElement;
   onMount(() => {
-    paintWood(desk, DESK.w, DESK.h);
-    viewport.addEventListener('wheel', onwheel, { passive: false });
+    const paint = () => paintWood(desk, window.innerWidth, window.innerHeight);
+    paint();
+    let timer = 0;
     const resize = () => {
       vw = window.innerWidth;
       vh = window.innerHeight;
-      home();
+      clearTimeout(timer);
+      timer = window.setTimeout(paint, 200);
     };
     window.addEventListener('resize', resize);
-    return () => {
-      viewport.removeEventListener('wheel', onwheel);
-      window.removeEventListener('resize', resize);
-    };
+    return () => window.removeEventListener('resize', resize);
   });
 </script>
 
@@ -263,81 +206,68 @@
 <svg class="defs" aria-hidden="true">
   <filter id="ink" x="-2%" y="-10%" width="104%" height="120%">
     <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="4" result="n" />
-    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.9" xChannelSelector="R" yChannelSelector="G" result="d" />
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="0.8" xChannelSelector="R" yChannelSelector="G" result="d" />
     <feComponentTransfer in="n" result="speckle">
-      <feFuncA type="linear" slope="-0.9" intercept="1.35" />
+      <feFuncA type="linear" slope="-0.7" intercept="1.3" />
     </feComponentTransfer>
     <feComposite in="d" in2="speckle" operator="in" />
   </filter>
   <filter id="graphite" x="-2%" y="-5%" width="104%" height="110%">
     <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="9" result="n" />
     <feComponentTransfer in="n" result="grain">
-      <feFuncA type="linear" slope="-1.5" intercept="1.6" />
+      <feFuncA type="linear" slope="-1.2" intercept="1.55" />
     </feComponentTransfer>
     <feComposite in="SourceGraphic" in2="grain" operator="in" result="g" />
-    <feDisplacementMap in="g" in2="n" scale="0.7" xChannelSelector="R" yChannelSelector="G" />
+    <feDisplacementMap in="g" in2="n" scale="0.6" xChannelSelector="R" yChannelSelector="G" />
   </filter>
 </svg>
 
-{#snippet folioMark(i: number)}
-  {@const f = folio(i)}
-  {#if f}<span class="folio print" class:l={i % 2 === 1}>{f}</span>{/if}
+{#snippet head(title: string, folio: number, left: boolean)}
+  <div class="runhead print" class:left>
+    <span class="folio">{folio}</span>
+    <span class="rh">{title}</span>
+  </div>
+{/snippet}
+
+{#snippet actions(lines: typeof lay.lines, main: boolean)}
+  {@const here = selectionHere(lines)}
+  {@const headHere = !!pending && lines.some((l) => l.kind === 'head' && l.item === pending!.id)}
+  <div class="aside">
+    {#if note && main}
+      <span>{note}</span>
+    {:else if headHere}
+      <button class="pencil-btn" onclick={rubOut}>rub out Lemma {pending!.number}?</button>
+      <button class="pencil-btn faint" onclick={() => (pending = null)}>keep it</button>
+    {:else if here && selectionRows >= 2}
+      <button class="pencil-btn" onclick={makeLemma}>make these {selectionRows} lines a lemma</button>
+      <button class="pencil-btn faint" onclick={() => (selection = null)}>never mind</button>
+    {:else if here}
+      <span class="faint">…and down to which line?</span>
+    {:else if main && !lay.fits && ops.length === 0}
+      <span class="faint">it doesn't fit. the bracketed lines keep repeating: click one.</span>
+    {:else if main && !lay.fits}
+      <span class="faint">still doesn't fit.</span>
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet page(i: number)}
   {@const side = i % 2 === 1 ? 'left' : 'right'}
-  {#if i === 0}
-    <Paper seed={3} kind="cover" side="right" />
-  {:else if i === 1 || i === PAGES - 1}
-    <Paper seed={i + 40} kind="endpaper" {side} />
-  {:else if i === 2}
-    <Paper seed={i} {side}>
-      <div class="title print">
-        <div class="law">{@html equationHtml(LAW_SRC)}</div>
-        <div class="ornament">❦</div>
-      </div>
-    </Paper>
-  {:else if i === 3}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
+  {#if i === 1}
+    <Paper seed={11} {side}>
+      {@render head('INVERSES', 47, true)}
       <div class="text print">
-        <h2>§1. A single law</h2>
-        <p>
-          Let <i>G</i> be a set with a multiplication (<i>x</i>, <i>y</i>) ↦ <i>xy</i> and a map
-          <i>x</i> ↦ <i>x</i><sup>−1</sup>, subject to one law:
+        <p class="small">Recall that <i>G</i> is a group:</p>
+        <p class="axioms">
+          {#each AXIOMS as a}<span class="ax"><span class="lbl">({a.label})</span> {@html equationHtml(a.src)}</span>{/each}
         </p>
-        <p class="display"><span class="tag">(A)</span>{@html equationHtml(LAW_SRC)}</p>
-        <p>
-          Nothing else is assumed: not that multiplication is associative, nor that there is an identity. It is a
-          remarkable fact, first found by machine,<sup>1</sup> that (A) alone makes <i>G</i> an abelian group. We prove
-          the part that is hardest to believe.
-        </p>
-        <p class="thm"><span class="sc">Theorem.</span> <em>For all <i>x</i>, <i>y</i> in <i>G</i>,</em></p>
-        <p class="display">{@html equationHtml(GOAL_SRC)}</p>
+        <p class="thm"><span class="sc">Theorem 4.</span> <em>For all <i>x</i>, <i>y</i> in <i>G</i>,</em></p>
+        <p class="display">{@html equationHtml(THEOREM_SRC)}</p>
         <p class="small">The proof is left to the reader.</p>
-        <p class="footnote"><sup>1</sup> W. McCune, 1993.</p>
       </div>
-    </Paper>
-  {:else if i === 4}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
-      <div class="text print">
-        <p class="small center">The same, in Lean 4.</p>
-        <pre class="code">{LEAN_PRELUDE}
-theorem comm (x y : G) :
-    x * y = y * x :=
-  -- see the pages that follow</pre>
-      </div>
-    </Paper>
-  {:else if i >= FIRST_PROOF && i < NOTES}
-    {@const p = Math.floor((i - FIRST_PROOF) / 2)}
-    {@const slice = lay.lines.slice(lay.pages[p][0], lay.pages[p][1])}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
-      {#if side === 'left'}
+      <div class="space">
         <PencilPage
-          lines={slice}
-          scale={lay.scale}
+          lines={lay.here}
           hints={lay.hints}
           {selection}
           {hovered}
@@ -346,110 +276,77 @@ theorem comm (x y : G) :
           onHead={headClicked}
           onHover={(k) => (hovered = k)}
         />
-        {@const here = selection && slice.some((l) => l.kind === 'row' && l.item === selection!.item && l.row === selection!.to)}
-        {@const headHere = pending && slice.some((l) => l.kind === 'head' && l.item === pending!.id)}
-        {#if here || headHere || (note && p === 0)}
-          <div class="aside">
-            {#if note}
-              <span>{note}</span>
-            {:else if headHere}
-              <button class="pencil-btn" onclick={rubOut}>rub out Lemma {pending!.number}?</button>
-              <button class="pencil-btn faint" onclick={() => (pending = null)}>no</button>
-            {:else if selectionRows >= 2}
-              <button class="pencil-btn" onclick={makeLemma}>make these {selectionRows} lines a lemma</button>
-            {:else}
-              <span class="faint">…down to which line?</span>
-            {/if}
-          </div>
-        {/if}
-      {:else}
-        <LeanPage lines={leanFor(slice, items)} {check} {hovered} />
-      {/if}
-    </Paper>
-  {:else if i === NOTES}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
-      <div class="text print">
-        <p class="small center">Notes</p>
       </div>
-      {#if complete}
-        <div class="stamp">
-          <div>Q.E.D.</div>
-          <div class="sub">checked · {check?.status === 'ok' ? check.version : 'Lean'}</div>
+      {@render actions(lay.here, true)}
+      {#if !lay.fits}<div class="cont">cont. overleaf →</div>{/if}
+    </Paper>
+  {:else if i === 2}
+    <Paper seed={12} {side}>
+      {@render head('THE SAME, IN LEAN 4', 48, false)}
+      <LeanPage prelude={LEAN_PRELUDE} lines={lean} {check} {hovered} />
+    </Paper>
+  {:else if i === 3}
+    <Paper seed={13} {side}>
+      {@render head('INVERSES', 49, true)}
+      {#if !lay.fits}
+        <div class="space top">
+          <PencilPage
+            lines={lay.overleaf}
+            hints={lay.hints}
+            {selection}
+            {hovered}
+            onPick={pick}
+            onHint={pickHint}
+            onHead={headClicked}
+            onHover={(k) => (hovered = k)}
+          />
         </div>
+        {@render actions(lay.overleaf, false)}
       {:else}
-        <div class="pencil-note">
-          {#if !lay.fits}
-            too cramped to read: {lay.lines.length} lines where there is room for {Math.round(lay.lines.length * lay.scale)}.
-          {:else if check?.status === 'checking'}
-            waiting on Lean…
-          {/if}
-        </div>
+        <div class="text print"><p class="small center">Notes</p></div>
+        {#if complete}
+          <div class="stamp">
+            <div>Q.E.D.</div>
+            <div class="sub">checked · {check?.status === 'ok' ? check.version : 'Lean'}</div>
+          </div>
+        {:else}
+          <div class="pencil-note">it fits. waiting on Lean…</div>
+        {/if}
       {/if}
       {#if ops.length}
-        <button class="pencil-btn restart" onclick={startOver}>(erase all of it and start over)</button>
+        <button class="pencil-btn restart" onclick={startOver}>(rub it all out and start again)</button>
       {/if}
     </Paper>
   {:else if i === UNCUT}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
-      <div class="text print">
-        <p class="center part">PART TWO</p>
-      </div>
+    <Paper seed={14} {side}>
+      {@render head('PART TWO', 50, false)}
+      <div class="text print"><p class="center part">PART TWO</p></div>
       {#if !cut}
         <div class="fold"></div>
         {#if complete}
-          <button class="slit pencil-btn" onclick={() => (cut = true)}>slit the pages open</button>
+          <button class="slit pencil-btn" onclick={() => (cut = true)}>slit the pages open →</button>
         {:else if resisted}
-          <div class="pencil-note low">still uncut.</div>
+          <div class="pencil-note low">uncut. finish the proof first.</div>
         {/if}
       {/if}
     </Paper>
   {:else}
-    <Paper seed={i} {side}>
-      {@render folioMark(i)}
-      {#if i === UNCUT + 1}
-        <div class="text print">
-          <p class="small center">[the rest of this book has not been printed yet]</p>
-        </div>
+    <Paper seed={10 + i} {side}>
+      {@render head('PART TWO', 46 + i, side === 'left')}
+      {#if i === 5}
+        <div class="text print"><p class="small center">[the rest of this book has not been printed yet]</p></div>
       {/if}
     </Paper>
   {/if}
 {/snippet}
 
-<div
-  class="viewport"
-  bind:this={viewport}
-  {onpointerdown}
-  {onpointermove}
-  {onpointerup}
-  onpointercancel={onpointerup}
-  role="application"
-  aria-label="An old book lying on a desk"
->
-  <div class="world" style:transform="translate({-cam.x * cam.z}px, {-cam.y * cam.z}px) scale({cam.z})">
-    <canvas
-      class="desk"
-      bind:this={desk}
-      style:left="{DESK.x}px"
-      style:top="{DESK.y}px"
-      style:width="{DESK.w}px"
-      style:height="{DESK.h}px"
-    ></canvas>
-    <div class="book-at" class:closed={!opened}>
-      <Book
-        bind:this={book}
-        bind:spread
-        pageCount={PAGES}
-        {page}
-        {canTurn}
-        onTurn={(to) => (opened = to > 0)}
-        onResist={() => (resisted = true)}
-      />
-    </div>
+<canvas class="desk" bind:this={desk}></canvas>
+<main class="stage" onpointerdown={swipeStart} onpointerup={swipeEnd}>
+  <div class="fit" style:transform="translate(-50%, -50%) scale({scale})">
+    <Book bind:this={book} bind:at pageCount={PAGES} {single} {page} {canLeave} onResist={() => (resisted = true)} />
   </div>
-  <div class="lamp"></div>
-</div>
+</main>
+<div class="lamp"></div>
 
 <style>
   .defs {
@@ -457,38 +354,31 @@ theorem comm (x y : G) :
     width: 0;
     height: 0;
   }
-  .viewport {
+  .desk {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .stage {
     position: fixed;
     inset: 0;
     overflow: hidden;
-    background: #1c130c;
-    touch-action: none;
+    touch-action: pan-y pinch-zoom;
   }
-  .world {
+  .fit {
     position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: 0 0;
-  }
-  .desk {
-    position: absolute;
-  }
-  .book-at {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transition: transform 900ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .book-at.closed {
-    transform: translateX(-280px);
+    left: 50%;
+    top: 50%;
+    transform-origin: center center;
   }
   .lamp {
-    position: absolute;
+    position: fixed;
     inset: 0;
     pointer-events: none;
     background:
       radial-gradient(90% 80% at 40% 30%, rgba(255, 214, 150, 0.08), transparent 60%),
-      radial-gradient(150% 120% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55));
+      radial-gradient(150% 120% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.5));
   }
 
   /* printed matter */
@@ -498,44 +388,58 @@ theorem comm (x y : G) :
     filter: url(#ink);
     mix-blend-mode: multiply;
   }
-  .folio {
+  .runhead {
     position: absolute;
-    top: 38px;
-    right: 48px;
-    font-size: 14px;
+    top: 34px;
+    left: 50px;
+    right: 44px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    letter-spacing: 0.14em;
   }
-  .folio.l {
-    right: auto;
-    left: 48px;
+  .runhead.left {
+    left: 44px;
+    right: 50px;
+  }
+  .runhead:not(.left) {
+    flex-direction: row-reverse;
+  }
+  .runhead .folio {
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+  .runhead .rh {
+    flex: 1;
+    text-align: center;
   }
   .text {
     position: absolute;
-    inset: 90px 64px 60px 64px;
+    inset: 78px 50px auto 48px;
     font-size: 17px;
     line-height: 1.5;
   }
   .text p {
-    margin: 0 0 0.8em;
+    margin: 0 0 0.6em;
     text-align: justify;
     hyphens: auto;
   }
-  .text h2 {
-    font-weight: normal;
-    font-size: 18px;
-    font-variant: small-caps;
-    letter-spacing: 0.06em;
-    text-align: center;
-    margin: 0 0 1.4em;
+  .axioms {
+    display: flex;
+    justify-content: center;
+    gap: 2em;
+    font-size: 16px;
+  }
+  .ax {
+    white-space: nowrap;
+  }
+  .lbl {
+    font-size: 14px;
+    margin-right: 0.3em;
   }
   .display {
     text-align: center !important;
-    font-size: 19px;
-    position: relative;
-  }
-  .tag {
-    position: absolute;
-    left: 0;
-    font-size: 16px;
+    font-size: 20px;
   }
   .sc {
     font-variant: small-caps;
@@ -547,40 +451,10 @@ theorem comm (x y : G) :
   .center {
     text-align: center !important;
   }
-  .footnote {
-    position: absolute;
-    bottom: 0;
-    font-size: 13px;
-    border-top: 1px solid rgba(40, 30, 20, 0.5);
-    padding-top: 4px;
-    width: 40%;
-  }
   .part {
-    margin-top: 40%;
+    margin-top: 45%;
     letter-spacing: 0.3em;
     font-size: 16px;
-  }
-  .title {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 30px;
-  }
-  .title .law {
-    font-size: 30px;
-  }
-  .ornament {
-    font-size: 22px;
-  }
-  .code {
-    font-family: 'Courier Prime', monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    margin: 1.5em 0 0;
   }
   :global(.paper sup) {
     font-size: 0.66em;
@@ -591,18 +465,37 @@ theorem comm (x y : G) :
     font-style: italic;
   }
 
-  /* pencil in the margins */
+  /* where the pencil goes */
+  .space {
+    position: absolute;
+    top: 272px;
+    left: 30px;
+    right: 44px;
+  }
+  .space.top {
+    top: 78px;
+  }
   .aside {
     position: absolute;
-    left: 58px;
-    right: 40px;
+    left: 48px;
+    right: 44px;
     bottom: 26px;
     display: flex;
-    gap: 1.2em;
+    gap: 1.1em;
     align-items: baseline;
     font-family: 'Kalam', cursive;
     font-weight: 300;
-    font-size: 19px;
+    font-size: 18px;
+    color: #2c2b30;
+    filter: url(#graphite);
+  }
+  .cont {
+    position: absolute;
+    right: 44px;
+    bottom: 58px;
+    font-family: 'Kalam', cursive;
+    font-weight: 300;
+    font-size: 17px;
     color: #2c2b30;
     filter: url(#graphite);
   }
@@ -611,30 +504,30 @@ theorem comm (x y : G) :
     cursor: pointer;
     font-family: 'Kalam', cursive;
     font-weight: 300;
-    font-size: 19px;
+    font-size: 18px;
     color: #2c2b30;
-    border-bottom: 1px solid rgba(44, 43, 48, 0.5);
+    border-bottom: 1.5px solid rgba(44, 43, 48, 0.55);
   }
   .pencil-btn:hover,
   .pencil-btn:focus-visible {
-    border-bottom-width: 2px;
+    border-bottom-width: 2.5px;
   }
   .faint {
-    opacity: 0.6;
+    opacity: 0.65;
   }
   .restart {
     position: absolute;
-    left: 64px;
-    bottom: 40px;
+    left: 48px;
+    bottom: 30px;
     font-size: 16px;
-    opacity: 0.7;
+    opacity: 0.75;
     filter: url(#graphite);
   }
   .pencil-note {
     position: absolute;
-    left: 64px;
-    right: 64px;
-    top: 200px;
+    left: 60px;
+    right: 60px;
+    top: 220px;
     font-family: 'Kalam', cursive;
     font-weight: 300;
     font-size: 20px;
@@ -644,12 +537,12 @@ theorem comm (x y : G) :
   }
   .pencil-note.low {
     top: auto;
-    bottom: 120px;
+    bottom: 140px;
   }
   .stamp {
     position: absolute;
     left: 50%;
-    top: 42%;
+    top: 40%;
     transform: translate(-50%, -50%) rotate(-11deg);
     border: 4px double rgba(160, 30, 40, 0.75);
     padding: 12px 28px;
@@ -677,9 +570,10 @@ theorem comm (x y : G) :
   }
   .slit {
     position: absolute;
-    right: 40px;
-    top: 45%;
-    transform: rotate(-4deg);
+    right: 50px;
+    top: 48%;
+    transform: rotate(-3deg);
     filter: url(#graphite);
+    font-size: 20px;
   }
 </style>
