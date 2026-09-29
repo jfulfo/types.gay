@@ -1,4 +1,15 @@
 #!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# The loose-pages app builds into www/cat-theory, so it must be built before
+# the --delete sync below (otherwise that would wipe it from the server).
+(
+    cd cat-theory
+    [ -d node_modules ] || npm ci
+    npm test
+    npm run build
+)
 
 rsync -avz --delete \
     --no-owner --no-group --no-times --no-perms \
